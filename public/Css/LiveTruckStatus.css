@@ -1,0 +1,105 @@
+body {
+  font-family: 'DM Sans', sans-serif;
+  background: #f5f5f5;
+  padding: 10px;
+}
+
+h2 {
+  text-align: center;
+  margin-bottom: 15px;
+}
+
+.top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.top-bar form {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.top-bar input,
+.top-bar select {
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid #ccc;
+  font-weight: bold;
+}
+
+.btn-reset {
+  text-decoration: none;
+  font-weight: bold;
+}
+
+.export-bar {
+  display: flex;
+  gap: 10px;
+}
+
+.export-btn {
+  padding: 7px 14px;
+  border-radius: 8px;
+  font-weight: bold;
+  color: white;
+  text-decoration: none;
+}
+
+.export-btn.excel {
+  background: #16a34a;
+}
+
+.export-btn.pdf {
+  background: #dc2626;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+th {
+  background: #6f6f6f;
+  color: white;
+}
+
+th, td {
+  padding: 9px;
+  border-bottom: 1px solid #ddd;
+  text-align: center;
+  font-weight: bold;
+}
+
+tr:hover {
+  background: #f0f4ff;
+}
+
+.pagination {
+  text-align: center;
+  margin-top: 12px;
+}
+
+.pagination a {
+  margin: 0 5px;
+  font-weight: bold;
+  text-decoration: none;
+}
+
+.auto-refresh {
+  display: block;
+  text-align: center;
+  margin-top: 12px;
+  font-weight: bold;
+}
+
+/* STATUS COLORS */
+.status-col.invoice-generated { color: #2563eb; }
+.status-col.fan-generated { color: #f59e0b; }
+.status-col.exit-weight-accepted { color: #16a34a; }
+.status-col.weighing-bill-generated { color: #9333ea; }
