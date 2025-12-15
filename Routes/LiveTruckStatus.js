@@ -8,7 +8,7 @@ const path = require("path");
 const dbConfig = require("../Config/dbConfig");
 const PdfPrinter = require("pdfmake");
 
-/* ================= HELPERS ================= */
+/* =============== HELPERS =============== */
 
 function buildWhere(req, r, tags = []) {
   let w = "WHERE 1=1";
@@ -34,17 +34,7 @@ function buildWhere(req, r, tags = []) {
   return w;
 }
 
-function statusMap(v) {
-  switch (v) {
-    case 0: return { t: "Pending", c: "pending" };
-    case 1: return { t: "Completed", c: "completed" };
-    case 2: return { t: "In Progress", c: "in-progress" };
-    case 16: return { t: "In Process", c: "in-process" };
-    default: return { t: String(v), c: "unknown" };
-  }
-}
-
-/* ================= MAIN PAGE ================= */
+/* =============== MAIN PAGE =============== */
 
 router.get("/LiveTruckStatus", async (req, res) => {
   try {
@@ -64,20 +54,14 @@ router.get("/LiveTruckStatus", async (req, res) => {
     const wd = buildWhere(req, dr);
 
     const rs = await dr.query(`
-      SELECT
-        TRUCK_REG_NO, CARD_NO, PROCESS_STATUS, BAY_NO,
-        CUSTOMER_NAME, ITEM_DESCRIPTION, NET_WEIGHT, EXIT_GATE_TIME,
-        (SELECT cv.* FROM COMMON_VIEW cv
-         WHERE cv.TRUCK_REG_NO = main.TRUCK_REG_NO
-           AND cv.CARD_NO = main.CARD_NO
-         FOR JSON PATH, WITHOUT_ARRAY_WRAPPER) AS FULL_ROW
-      FROM COMMON_VIEW main
+      SELECT * FROM COMMON_VIEW
       ${wd}
       ORDER BY FAN_TIME_OUT DESC
       OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY
     `);
 
     const hasData = rs.recordset.length > 0;
+    const columns = hasData ? Object.keys(rs.recordset[0]) : [];
 
     let html = `
 <!DOCTYPE html>
@@ -96,66 +80,65 @@ ${fs.readFileSync(path.join(__dirname, "../public/Css/navbar.html"), "utf8")}
 <h2>LIVE TRUCK STATUS</h2>
 
 <form class="filter-bar">
-<input name="search" placeholder="Truck / Card / Customer" value="${escapeHtml(req.query.search || "")}">
-<select name="bay"><option value="">All Bays</option><option>1</option><option>2</option><option>3</option><option>4</option></select>
-<select name="processType"><option value="">All Types</option><option value="1">Loading</option><option value="0">Unloading</option></select>
-<button>Apply</button>
-<a href="/LiveTruckStatus">Reset</a>
+  <input name="search" placeholder="Truck / Card / Customer" value="${escapeHtml(req.query.search || "")}">
+  <select name="bay">
+    <option value="">All Bays</option><option>1</option><option>2</option><option>3</option><option>4</option>
+  </select>
+  <select name="processType">
+    <option value="">All Types</option>
+    <option value="1">Loading</option>
+    <option value="0">Unloading</option>
+  </select>
+  <button>Apply</button>
+  <a href="/LiveTruckStatus">Reset</a>
 </form>
 
 <div class="export-bar">
   <div class="right-actions">
+
+    <label class="auto-refresh">
+      <input type="checkbox" id="autoRefreshChk">
+      Auto Refresh (30s)
+    </label>
+
     <button class="dark-toggle" onclick="toggleDarkMode()" id="darkBtn">
-  <span id="darkIcon">🌙</span>
-</button>
+      <span id="darkIcon">🌙</span>
+    </button>
 
-<a href="#"
-   class="btn excel ${!hasData ? "disabled" : ""}"
-   ${!hasData ? 'onclick="return false"' : 'onclick="openExcelModal(event)"'}>
-   Excel
-</a>
+    <a href="#"
+       class="btn excel ${!hasData ? "disabled" : ""}"
+       ${!hasData ? 'onclick="return false"' : 'onclick="openExcelModal(event)"'}>
+       Excel
+    </a>
 
-<a href="#"
-   class="btn pdf ${!hasData ? "disabled" : ""}"
-   ${!hasData ? 'onclick="return false"' : 'onclick="openPdfModal(event)"'}>
-   PDF
-</a>
-
+    <a href="#"
+       class="btn pdf ${!hasData ? "disabled" : ""}"
+       ${!hasData ? 'onclick="return false"' : 'onclick="openPdfModal(event)"'}>
+       PDF
+    </a>
   </div>
 </div>
 
+<div class="table-wrapper">
 <table>
 <thead>
 <tr>
-<th>#</th><th>Truck</th><th>Card</th><th>Status</th>
-<th>Bay</th><th>Customer</th><th>Product</th>
-<th>Net Wt</th><th>Exit</th><th>Action</th>
+${columns.map(c => `<th>${escapeHtml(c.replace(/_/g, " "))}</th>`).join("")}
 </tr>
 </thead>
 <tbody>
 `;
 
-    rs.recordset.forEach((r, i) => {
-      const st = statusMap(r.PROCESS_STATUS);
-      html += `
-<tr>
-<td>${offset + i + 1}</td>
-<td>${r.TRUCK_REG_NO}</td>
-<td>${r.CARD_NO}</td>
-<td class="status ${st.c}">${st.t}</td>
-<td>${r.BAY_NO || ""}</td>
-<td>${escapeHtml(r.CUSTOMER_NAME || "")}</td>
-<td>${escapeHtml(r.ITEM_DESCRIPTION || "")}</td>
-<td>${r.NET_WEIGHT || ""}</td>
-<td>${r.EXIT_GATE_TIME || ""}</td>
-<td>
-<button class="view-btn" onclick='openModal(${escapeHtml(JSON.stringify(r.FULL_ROW))})'>View</button>
-</td>
-</tr>`;
+    rs.recordset.forEach(row => {
+      html += `<tr>${
+        columns.map(c => `<td>${escapeHtml(String(row[c] ?? ""))}</td>`).join("")
+      }</tr>`;
     });
 
     html += `
-</tbody></table>
+</tbody>
+</table>
+</div>
 
 <div class="pagination">
 ${page > 1 ? `<a class="page-btn" href="?page=${page - 1}">Prev</a>` : ""}
@@ -165,18 +148,6 @@ ${Array.from({ length: pages }, (_, i) =>
 ${page < pages ? `<a class="page-btn" href="?page=${page + 1}">Next</a>` : ""}
 </div>
 
-<!-- VIEW MODAL -->
-<div id="modal" class="modal">
-  <div class="modal-content">
-    <div class="modal-header">
-      <h3>Truck Full Details</h3>
-      <span class="modal-close" onclick="closeModal()">✕</span>
-    </div>
-    <div class="modal-body" id="modalBody"></div>
-  </div>
-</div>
-
-<!-- EXPORT MODALS -->
 ${exportModalHtml("pdf")}
 ${exportModalHtml("excel")}
 
@@ -188,16 +159,6 @@ document.addEventListener('keydown',e=>{
   if(e.key==='Escape') closeAllModals();
 });
 
-function openModal(data){
-  const obj = JSON.parse(data);
-  let h='<table class="detail-table">';
-  for(const k in obj) h+=\`<tr><th>\${k}</th><td>\${obj[k]}</td></tr>\`;
-  h+='</table>';
-  modalBody.innerHTML=h;
-  modal.style.display='block';
-}
-function closeModal(){ modal.style.display='none'; }
-
 function openPdfModal(e){ openExportModal(e,'pdfModal'); }
 function openExcelModal(e){ openExportModal(e,'excelModal'); }
 
@@ -207,7 +168,8 @@ function openExportModal(e,id){
   const m=document.getElementById(id);
   m.style.display='block';
   const r=e.target.getBoundingClientRect();
-  m.querySelector('.modal-content').style.marginTop=(r.bottom+window.scrollY+10)+'px';
+  m.querySelector('.modal-content').style.marginTop =
+    (r.bottom + window.scrollY + 10) + 'px';
 }
 
 function exportData(type,scope){
@@ -219,31 +181,60 @@ function exportData(type,scope){
 }
 
 function toggleDarkMode(){
-  const body = document.body;
-  const icon = document.getElementById('darkIcon');
-
+  const body=document.body;
+  const icon=document.getElementById('darkIcon');
   body.classList.toggle('dark');
-
   if(body.classList.contains('dark')){
-    icon.textContent = '☀️';
+    icon.textContent='☀️';
     localStorage.setItem('lts_dark','1');
   } else {
-    icon.textContent = '🌙';
+    icon.textContent='🌙';
     localStorage.removeItem('lts_dark');
   }
 }
-
-// restore on load
 (function(){
   if(localStorage.getItem('lts_dark')){
     document.body.classList.add('dark');
-    const icon = document.getElementById('darkIcon');
-    if(icon) icon.textContent = '☀️';
+    const icon=document.getElementById('darkIcon');
+    if(icon) icon.textContent='☀️';
   }
 })();
 </script>
 
-</body></html>`;
+<script>
+/* ===== AUTO REFRESH ===== */
+let autoRefreshTimer=null;
+function startAutoRefresh(){
+  stopAutoRefresh();
+  autoRefreshTimer=setInterval(()=>location.reload(),30000);
+}
+function stopAutoRefresh(){
+  if(autoRefreshTimer){
+    clearInterval(autoRefreshTimer);
+    autoRefreshTimer=null;
+  }
+}
+const chk=document.getElementById("autoRefreshChk");
+if(chk){
+  if(localStorage.getItem("lts_auto_refresh")==="1"){
+    chk.checked=true;
+    startAutoRefresh();
+  }
+  chk.addEventListener("change",()=>{
+    if(chk.checked){
+      localStorage.setItem("lts_auto_refresh","1");
+      startAutoRefresh();
+    } else {
+      localStorage.removeItem("lts_auto_refresh");
+      stopAutoRefresh();
+    }
+  });
+}
+</script>
+
+</body>
+</html>
+`;
 
     res.send(html);
   } catch (e) {
@@ -252,14 +243,31 @@ function toggleDarkMode(){
   }
 });
 
-/* ================= EXCEL EXPORT ================= */
+/* ===== EXPORT MODAL HTML ===== */
+
+function exportModalHtml(type) {
+  return `
+<div id="${type}Modal" class="modal">
+  <div class="modal-content pdf-modal">
+    <div class="modal-header">
+      <h3>Export ${type.toUpperCase()}</h3>
+      <span class="modal-close" onclick="closeAllModals()">✕</span>
+    </div>
+    <div class="modal-body pdf-options">
+      <button class="btn ${type}" onclick="exportData('${type}','page')">Current Page</button>
+      <button class="btn ${type}" onclick="exportData('${type}','all')">All Pages</button>
+    </div>
+  </div>
+</div>`;
+}
+
+/* =============== EXCEL EXPORT =============== */
 
 router.get("/LiveTruckStatus/excel", async (req, res) => {
   try {
     const pool = await sql.connect(dbConfig);
     const r = pool.request();
     const tags = [];
-
     const where = buildWhere(req, r, tags);
 
     const limit = 20;
@@ -279,35 +287,37 @@ router.get("/LiveTruckStatus/excel", async (req, res) => {
       ${paging}
     `);
 
+    if (!rs.recordset.length) return res.status(404).send("No data");
+
     const wb = new ExcelJS.Workbook();
     const ws = wb.addWorksheet("Live Truck Status");
 
-    ws.columns = Object.keys(rs.recordset[0]).map(k=>({
-      header:k.replace(/_/g," "),
-      key:k,
-      width:22
+    ws.columns = Object.keys(rs.recordset[0]).map(k => ({
+      header: k.replace(/_/g," "),
+      key: k,
+      width: 22
     }));
 
-    rs.recordset.forEach(r=>ws.addRow(r));
+    rs.recordset.forEach(r => ws.addRow(r));
 
-    ws.getRow(1).eachCell(c=>{
-      c.font={bold:true,color:{argb:"FFFFFFFF"}};
-      c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF1F4E78"}};
+    ws.getRow(1).eachCell(c => {
+      c.font = { bold:true, color:{argb:"FFFFFFFF"} };
+      c.fill = { type:"pattern", pattern:"solid", fgColor:{argb:"FF1F4E78"} };
     });
 
-    const d = new Date().toLocaleDateString("en-GB").split("/").join("_");
-    const f = tags.length ? "_"+tags.join("_") : "";
+    const d=new Date().toLocaleDateString("en-GB").split("/").join("_");
+    const f=tags.length?"_"+tags.join("_"):"";
 
     res.setHeader("Content-Disposition",`attachment; filename="LiveTruckStatus${f}_${d}.xlsx"`);
     await wb.xlsx.write(res);
     res.end();
   } catch (e) {
-    console.error("Excel error:", e);
+    console.error(e);
     res.status(500).send("Excel export failed");
   }
 });
 
-/* ================= PDF EXPORT ================= */
+/* =============== PDF EXPORT (WRAP FIXED) =============== */
 
 router.get("/LiveTruckStatus/pdf", async (req, res) => {
   try {
@@ -334,61 +344,122 @@ router.get("/LiveTruckStatus/pdf", async (req, res) => {
       ${paging}
     `);
 
-    const cols = Object.keys(rs.recordset[0]);
-    const widths = cols.map(c =>
-      c.includes("TIME")||c.includes("DATE")?80:
-      c.includes("NAME")||c.includes("ADDRESS")?100:
-      c.includes("WEIGHT")?70:55
-    );
+    if (!rs.recordset.length) {
+      return res.status(404).send("No data to export");
+    }
 
-    const body = [ cols.map(c=>({text:c.replace(/_/g," "),style:"th"})) ];
-    rs.recordset.forEach(r=>{
-      body.push(cols.map(c=>String(r[c]??"")));
+    const columns = Object.keys(rs.recordset[0]);
+
+    /* ================= HORIZONTAL PAGING LOGIC ================= */
+
+    const MAX_COL_WIDTH = 70;           // safe readable width
+    const PAGE_WIDTH = 1120;            // A3 landscape usable width
+    const COLS_PER_PAGE = Math.floor(PAGE_WIDTH / MAX_COL_WIDTH);
+
+    const columnChunks = [];
+    for (let i = 0; i < columns.length; i += COLS_PER_PAGE) {
+      columnChunks.push(columns.slice(i, i + COLS_PER_PAGE));
+    }
+
+    /* ================= PDF CONTENT BUILD ================= */
+
+    const content = [
+      {
+        text: "Live Truck Status Report",
+        fontSize: 16,
+        bold: true,
+        margin: [0, 0, 0, 8],
+      },
+      {
+        text: `Generated on: ${new Date().toLocaleString()}`,
+        margin: [0, 0, 0, 12],
+        fontSize: 9,
+      },
+    ];
+
+    columnChunks.forEach((chunkCols, idx) => {
+      const body = [
+        chunkCols.map(c => ({
+          text: c.replace(/_/g, " "),
+          style: "th",
+        })),
+      ];
+
+      rs.recordset.forEach(row => {
+        body.push(
+          chunkCols.map(c => ({
+            text: String(row[c] ?? ""),
+            noWrap: false,
+            margin: [2, 2, 2, 2],
+          }))
+        );
+      });
+
+      content.push({
+        table: {
+          headerRows: 1,
+          widths: chunkCols.map(() => MAX_COL_WIDTH),
+          body,
+          dontBreakRows: false,
+        },
+        layout: "lightHorizontalLines",
+        fontSize: 7,
+        margin: [0, 0, 0, 15],
+        pageBreak: idx === columnChunks.length - 1 ? undefined : "after",
+      });
     });
 
-    const printer = new PdfPrinter({Helvetica:{normal:"Helvetica",bold:"Helvetica-Bold"}});
+    /* ================= PDF DOC ================= */
+
+    const printer = new PdfPrinter({
+      Helvetica: {
+        normal: "Helvetica",
+        bold: "Helvetica-Bold",
+      },
+    });
+
     const doc = {
-      pageSize:"A3",
-      pageOrientation:"landscape",
-      defaultStyle:{font:"Helvetica",fontSize:8},
-      footer:(p,t)=>({text:`Page ${p} of ${t}`,alignment:"right",margin:[0,0,20,0]}),
-      content:[
-        {text:"Live Truck Status Report",fontSize:16,bold:true},
-        {text:`Generated on: ${new Date().toLocaleString()}`,margin:[0,5,0,10]},
-        {table:{headerRows:1,widths,body},layout:"lightHorizontalLines"}
-      ],
-      styles:{th:{bold:true,fillColor:"#1F4E78",color:"white"}}
+      pageSize: "A3",
+      pageOrientation: "landscape",
+      pageMargins: [20, 40, 20, 30],
+      defaultStyle: {
+        font: "Helvetica",
+        fontSize: 8,
+      },
+      footer: (current, total) => ({
+        text: `Page ${current} of ${total}`,
+        alignment: "right",
+        margin: [0, 0, 20, 0],
+        fontSize: 8,
+      }),
+      styles: {
+        th: {
+          bold: true,
+          fillColor: "#1F4E78",
+          color: "white",
+        },
+      },
+      content,
     };
 
     const d = new Date().toLocaleDateString("en-GB").split("/").join("_");
-    const f = tags.length ? "_"+tags.join("_") : "";
+    const f = tags.length ? "_" + tags.join("_") : "";
 
-    res.setHeader("Content-Disposition",`attachment; filename="LiveTruckStatus${f}_${d}.pdf"`);
-    res.setHeader("Content-Type","application/pdf");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="LiveTruckStatus${f}_${d}.pdf"`
+    );
+    res.setHeader("Content-Type", "application/pdf");
 
     const pdf = printer.createPdfKitDocument(doc);
     pdf.pipe(res);
     pdf.end();
+
   } catch (e) {
-    console.error("PDF error:", e);
+    console.error("PDF export error:", e);
     res.status(500).send("PDF export failed");
   }
 });
 
-function exportModalHtml(type){
-  return `
-<div id="${type}Modal" class="modal">
-  <div class="modal-content pdf-modal">
-    <div class="modal-header">
-      <h3>Export ${type.toUpperCase()}</h3>
-      <span class="modal-close" onclick="closeAllModals()">✕</span>
-    </div>
-    <div class="modal-body pdf-options">
-      <button class="btn ${type}" onclick="exportData('${type}','page')">Current Page</button>
-      <button class="btn ${type}" onclick="exportData('${type}','all')">All Pages</button>
-    </div>
-  </div>
-</div>`;
-}
 
 module.exports = router;

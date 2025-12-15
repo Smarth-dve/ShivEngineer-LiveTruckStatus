@@ -37,8 +37,9 @@ app.use('/ExitWeigh', require('./Routes/ExitWeigh'));
 app.use('/InvoiceGeneration', require('./Routes/InvoiceGeneration'));
 app.use('/WeighingBill', require('./Routes/WeighingBill'));
 app.use('/Icons', express.static(path.join(__dirname, 'Icons')));
-app.use('/', require('./Routes/LiveTruckStatus'));
+const liveTruckStatusRoutes = require("./Routes/LiveTruckStatus");
 
+app.use("/", liveTruckStatusRoutes);
 
 
 // ✅ Generate self-signed certificate dynamically

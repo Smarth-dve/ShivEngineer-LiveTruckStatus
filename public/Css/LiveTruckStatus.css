@@ -35,7 +35,7 @@ body.dark {
 /* ===================== BASE ===================== */
 
 body {
-  font-family: 'DM Sans', sans-serif;
+  font-family: "DM Sans", sans-serif;
   background: var(--bg-main);
   color: var(--text-main);
 }
@@ -69,7 +69,7 @@ h2 {
   border-radius: 10px;
   border: none;
   background: var(--blue);
-  color: var(--text-white);
+  color: #fff;
   font-weight: 600;
   cursor: pointer;
 }
@@ -80,18 +80,18 @@ h2 {
   text-decoration: none;
 }
 
-/* ===================== EXPORT + DARK MODE ===================== */
+/* ===================== EXPORT BAR ===================== */
 
 .export-bar {
   display: flex;
   justify-content: flex-end;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .right-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 14px;
 }
 
 /* ===================== BUTTONS ===================== */
@@ -100,11 +100,13 @@ h2 {
   padding: 8px 18px;
   border-radius: 10px;
   font-weight: 600;
-  color: var(--text-white);
+  color: #fff;
   text-decoration: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  border: none;
+  cursor: pointer;
 }
 
 .btn.excel { background: var(--green); }
@@ -116,59 +118,76 @@ h2 {
   pointer-events: none;
 }
 
-/* ===================== DARK TOGGLE ===================== */
+/* ===================== DARK MODE TOGGLE ===================== */
 
 .dark-toggle {
   width: 38px;
   height: 38px;
-  padding: 0;
-  background: transparent;
-  border: none;
+  background: var(--bg-card);
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  border-radius: 8px;
 }
 
 .dark-toggle span {
   font-size: 18px;
-  line-height: 1;
 }
 
 .dark-toggle:hover {
-  background: rgba(0, 0, 0, 0.08);
+  background: rgba(0,0,0,0.08);
 }
 
 body.dark .dark-toggle:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255,255,255,0.12);
+}
+
+/* ===================== TABLE WRAPPER ===================== */
+
+.table-wrapper {
+  width: 100%;
+  background: var(--bg-card);
+  border-radius: 14px;
+  padding: 8px;
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: calc(100vh - 300px);
+  box-shadow: 0 10px 20px rgba(0,0,0,0.05);
 }
 
 /* ===================== TABLE ===================== */
 
 table {
-  width: 100%;
-  border-collapse: collapse;
-  background: var(--bg-card);
-  border-radius: 14px;
-  overflow: hidden;
+  border-collapse: separate;
+  border-spacing: 0;
+  width: max-content;
+  min-width: 100%;
 }
 
-thead {
+thead th {
+  position: sticky;
+  top: 0;
   background: var(--bg-table-head);
-}
-
-th {
-  padding: 10px;
   color: var(--text-white);
   font-weight: 600;
+  padding: 10px 12px;
+  white-space: nowrap;
+  z-index: 5;
 }
+
+/* ===================== CELLS ===================== */
 
 td {
-  padding: 9px;
+  padding: 9px 12px;
   border-bottom: 1px solid var(--border);
   text-align: center;
+  white-space: nowrap;
 }
 
-tr:hover {
-  background: rgba(59, 130, 246, 0.08);
+tr:hover td {
+  background: rgba(59,130,246,0.06);
 }
 
 /* ===================== STATUS ===================== */
@@ -178,24 +197,13 @@ tr:hover {
 .status.in-progress { color: var(--blue);   font-weight: 600; }
 .status.in-process  { color: var(--purple); font-weight: 600; }
 
-/* ===================== VIEW BUTTON ===================== */
-
-.view-btn {
-  padding: 6px 14px;
-  border-radius: 8px;
-  border: none;
-  background: #0ea5e9;
-  color: var(--text-white);
-  cursor: pointer;
-}
-
 /* ===================== MODAL ===================== */
 
 .modal {
   display: none;
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0,0,0,0.55);
   z-index: 5000;
 }
 
@@ -210,7 +218,6 @@ tr:hover {
   overflow: hidden;
 }
 
-/* HEADER */
 .modal-header {
   background: var(--bg-header);
   color: var(--text-white);
@@ -220,11 +227,6 @@ tr:hover {
   align-items: center;
 }
 
-.modal-header h3 {
-  margin: 0;
-}
-
-/* CLOSE */
 .modal-close {
   font-size: 22px;
   cursor: pointer;
@@ -233,10 +235,9 @@ tr:hover {
 }
 
 .modal-close:hover {
-  background: rgba(255, 255, 255, 0.15);
+  background: rgba(255,255,255,0.15);
 }
 
-/* BODY */
 .modal-body {
   padding: 16px;
   overflow: auto;
@@ -278,17 +279,11 @@ body.dark .modal-header {
 body.dark .detail-table th {
   background: #020617;
   color: #cbd5f5;
-  border-bottom: 1px solid #1e293b;
 }
 
 body.dark .detail-table td {
   background: #0f172a;
   color: #e5e7eb;
-  border-bottom: 1px solid #1e293b;
-}
-
-body.dark .detail-table tr:hover td {
-  background: #111827;
 }
 
 /* ===================== PAGINATION ===================== */
@@ -304,26 +299,26 @@ body.dark .detail-table tr:hover td {
   margin: 0 4px;
   border-radius: 6px;
   font-weight: 600;
-  text-decoration: none;
   background: #e5e7eb;
   color: #111827;
+  text-decoration: none;
 }
 
 .page-btn:hover,
 .page-btn.active {
-  background: #1f4e78;
-  color: #ffffff;
+  background: var(--blue);
+  color: #fff;
 }
 
-.dark .page-btn {
+body.dark .page-btn {
   background: #1f2937;
   color: #e5e7eb;
 }
 
-.dark .page-btn:hover,
-.dark .page-btn.active {
+body.dark .page-btn:hover,
+body.dark .page-btn.active {
   background: var(--blue);
-  color: var(--text-white);
+  color: #fff;
 }
 
 /* ===================== EXPORT MODAL ===================== */
@@ -340,5 +335,156 @@ body.dark .detail-table tr:hover td {
 
 .pdf-options .btn {
   width: 100%;
-  text-align: center;
+}
+
+/* ================= DARK MODE TABLE FIX ================= */
+
+body.dark table {
+  background: #0f172a;
+  color: #e5e7eb;
+}
+
+body.dark thead {
+  background: #1e293b;
+}
+
+body.dark td {
+  border-bottom: 1px solid #1e293b;
+}
+
+body.dark tr:hover td {
+  background: #1e293b;
+}
+
+/* ================= AUTO REFRESH ================= */
+
+.auto-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text-main);
+  margin-right: 8px;
+}
+
+.auto-refresh input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+body.dark .auto-refresh {
+  color: var(--text-muted);
+}
+
+/* ===================== PROFESSIONAL SCROLLBAR ===================== */
+
+/* Wrapper spacing so scrollbar is not stuck to table */
+.table-wrap {
+  padding-bottom: 6px;
+}
+
+/* WebKit browsers (Chrome, Edge, Brave) */
+.table-wrap::-webkit-scrollbar {
+  height: 10px;
+}
+
+.table-wrap::-webkit-scrollbar-track {
+  background: transparent;
+  margin: 0 6px;
+}
+
+.table-wrap::-webkit-scrollbar-thumb {
+  background: #cbd5e1; /* soft slate */
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.table-wrap::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ===================== DARK MODE SCROLLBAR ===================== */
+
+body.dark .table-wrap::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+body.dark .table-wrap::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* ===================== FIREFOX SUPPORT ===================== */
+
+/* ===================== TABLE SCROLL CONTAINER ===================== */
+
+.table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  margin-top: 10px;
+  padding-bottom: 6px;
+
+  background: var(--bg-card);
+  border-radius: 14px;
+  box-shadow:
+    inset 0 0 0 1px var(--border),
+    0 10px 20px rgba(0,0,0,0.05);
+}
+
+
+/* ===================== PROFESSIONAL SINGLE SCROLLBAR ===================== */
+
+/* Chrome / Edge / Brave */
+.table-wrap::-webkit-scrollbar {
+  height: 8px;
+}
+
+.table-wrap::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.table-wrap::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 999px;
+}
+
+.table-wrap::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Dark Mode */
+body.dark .table-wrap::-webkit-scrollbar-thumb {
+  background: #475569;
+}
+
+body.dark .table-wrap::-webkit-scrollbar-thumb:hover {
+  background: #64748b;
+}
+
+/* Firefox */
+.table-wrap {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+body.dark .table-wrap {
+  scrollbar-color: #475569 transparent;
+}
+
+table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+
+/* ===================== SINGLE SCROLL SOURCE ===================== */
+
+/* Prevent page-level horizontal scrolling */
+html, body {
+  overflow-x: hidden;
 }
