@@ -66,3 +66,20 @@ nav ul li a.active::after {
   width: 100%;
 }
 
+/* ===== DARK MODE NAVBAR FIX ===== */
+
+body.dark nav {
+  background: #0f172a;
+}
+
+body.dark nav ul li a {
+  color: #e5e7eb !important; /* soft white */
+}
+
+body.dark nav ul li a:hover {
+  color: #60a5fa !important; /* muted blue */
+}
+
+body.dark nav ul li a.active {
+  color: #22c55e !important; /* soft green */
+}

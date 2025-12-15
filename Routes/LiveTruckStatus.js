@@ -7,261 +7,463 @@ const PDFDocument = require('pdfkit');
 const fs = require('fs');
 const path = require('path');
 const dbConfig = require('../Config/dbConfig');
+const libre = require('libreoffice-convert');
+libre.convertAsync = require('util').promisify(libre.convert);
 
-/*
-  LIVE TRUCK STATUS
-  SAME STRUCTURE & BEHAVIOR AS tees.js
-  SOURCE: COMMON_VIEW_3
-*/
+
+
+/* ---------------- HELPERS ---------------- */
+
+function dateSuffix() {
+  const d = new Date();
+  return `${String(d.getDate()).padStart(2,'0')}_${String(d.getMonth()+1).padStart(2,'0')}_${String(d.getFullYear()).slice(-2)}`;
+}
+
+function statusMap(v) {
+  switch (v) {
+    case 0: return { t:'Pending', c:'pending' };
+    case 1: return { t:'Completed', c:'completed' };
+    case 2: return { t:'In Progress', c:'in-progress' };
+    case 16: return { t:'In Process', c:'in-process' };
+    default: return { t:String(v), c:'unknown' };
+  }
+}
+
+function buildWhere(req, r) {
+  let w = 'WHERE 1=1';
+
+  if (req.query.search) {
+    w += ` AND (TRUCK_REG_NO LIKE @s OR CARD_NO LIKE @s OR CUSTOMER_NAME LIKE @s)`;
+    r.input('s', sql.VarChar, `%${req.query.search}%`);
+  }
+
+  if (req.query.bay) {
+    w += ' AND BAY_NO=@b';
+    r.input('b', sql.Int, req.query.bay);
+  }
+
+  if (req.query.processType) {
+    w += ' AND PROCESS_TYPE=@p';
+    r.input('p', sql.Int, req.query.processType);
+  }
+
+  return w;
+}
+
+/* ---------------- MAIN PAGE ---------------- */
 
 router.get('/LiveTruckStatus', async (req, res) => {
-  try {
-    const pool = await sql.connect(dbConfig);
+try {
+  const pool = await sql.connect(dbConfig);
 
-    /* pagination */
-    const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 20;
-    const offset = (page - 1) * limit;
+  const page = +req.query.page || 1;
+  const limit = 20;
+  const offset = (page - 1) * limit;
 
-    /* filters */
-    const search = req.query.search ? `%${req.query.search}%` : null;
-    const bay = req.query.bay || null;
-    const type = req.query.type || null;
+  const cr = pool.request();
+  const wc = buildWhere(req, cr);
+  const count = await cr.query(`SELECT COUNT(*) t FROM COMMON_VIEW ${wc}`);
+  const total = count.recordset[0].t;
+  const pages = Math.ceil(total / limit);
 
-    /* sorting */
-    const sort = req.query.sort || 'FAN_TIMEOUT';
-    const order = req.query.order === 'ASC' ? 'ASC' : 'DESC';
+  const dr = pool.request();
+  const wd = buildWhere(req, dr);
 
-    const allowedSortMap = {
-      TRUCK_REG_NO: '[TRUCK REG NO]',
-      CARD_NO: '[CARD NO]',
-      STATUS: '[STATUS]',
-      TYPE: '[TYPE]',
-      BAY: '[BAY]',
-      BATCH_STATUS: '[BATCH_STATUS]',
-      ENTRY_GATE_TIME: '[ENTRY GATE TIME]',
-      FAN_TIMEOUT: '[FAN TIMEOUT]'
-    };
+  const rs = await dr.query(`
+    SELECT
+      TRUCK_REG_NO, CARD_NO, PROCESS_STATUS, BAY_NO,
+      CUSTOMER_NAME, ITEM_DESCRIPTION, NET_WEIGHT, EXIT_GATE_TIME,
+      (SELECT cv.* FROM COMMON_VIEW cv
+       WHERE cv.TRUCK_REG_NO = main.TRUCK_REG_NO
+         AND cv.CARD_NO = main.CARD_NO
+       FOR JSON PATH, WITHOUT_ARRAY_WRAPPER) AS FULL_ROW
+    FROM COMMON_VIEW main
+    ${wd}
+    ORDER BY FAN_TIME_OUT DESC
+    OFFSET ${offset} ROWS FETCH NEXT ${limit} ROWS ONLY
+  `);
 
-    const sortColumn = allowedSortMap[sort] || '[FAN TIMEOUT]';
-
-    /* where clause */
-    let whereClause = 'WHERE 1=1';
-
-    if (search) {
-      whereClause += `
-        AND (
-          [TRUCK REG NO] LIKE @search OR
-          [CARD NO] LIKE @search OR
-          [STATUS] LIKE @search
-        )
-      `;
-    }
-
-    if (bay) whereClause += ' AND [BAY] = @bay';
-    if (type) whereClause += ' AND [TYPE] = @type';
-
-    /* count query */
-    const countReq = pool.request();
-    if (search) countReq.input('search', sql.VarChar, search);
-    if (bay) countReq.input('bay', sql.Int, bay);
-    if (type) countReq.input('type', sql.VarChar, type);
-
-    const countResult = await countReq.query(`
-      SELECT COUNT(*) AS total
-      FROM COMMON_VIEW_3
-      ${whereClause}
-    `);
-
-    const totalRecords = countResult.recordset[0].total;
-    const totalPages = Math.ceil(totalRecords / limit);
-
-    /* data query */
-    const dataReq = pool.request();
-    if (search) dataReq.input('search', sql.VarChar, search);
-    if (bay) dataReq.input('bay', sql.Int, bay);
-    if (type) dataReq.input('type', sql.VarChar, type);
-
-    const dataResult = await dataReq.query(`
-      SELECT
-        [TRUCK REG NO],
-        [CARD NO],
-        [STATUS],
-        [TYPE],
-        [BAY],
-        [BATCH_STATUS],
-        [ENTRY GATE TIME],
-        [FAN TIMEOUT]
-      FROM COMMON_VIEW_3
-      ${whereClause}
-      ORDER BY ${sortColumn} ${order}
-      OFFSET ${offset} ROWS
-      FETCH NEXT ${limit} ROWS ONLY
-    `);
-
-    const rows = dataResult.recordset;
-
-    /* HTML */
-    let html = `
+  let html = `
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Live Truck Status</title>
-  <link rel="stylesheet" href="/Css/Home.css">
-  <link rel="stylesheet" href="/Css/Page.css">
-  <link rel="stylesheet" href="/Css/LiveTruckStatus.css">
-  <link href="https://fonts.googleapis.com/css?family=DM Sans" rel="stylesheet">
+<title>Live Truck Status</title>
+<link rel="stylesheet" href="/Css/Home.css">
+<link rel="stylesheet" href="/Css/Page.css">
+<link rel="stylesheet" href="/Css/LiveTruckStatus.css">
+<link href="https://fonts.googleapis.com/css?family=DM Sans" rel="stylesheet">
 </head>
 <body>
 
-${fs.readFileSync(path.join(__dirname, '../public/Css/navbar.html'), 'utf8')}
+${fs.readFileSync(path.join(__dirname,'../public/Css/navbar.html'),'utf8')}
 
 <h2>LIVE TRUCK STATUS</h2>
 
-<div class="top-bar">
-  <form method="GET" action="/LiveTruckStatus">
-    <input type="text" name="search" placeholder="Search Truck / Card / Status"
-      value="${escapeHtml(req.query.search || '')}">
+<form class="filter-bar">
+<input name="search" placeholder="Truck / Card / Customer" value="${escapeHtml(req.query.search||'')}">
+<select name="bay"><option value="">All Bays</option><option>1</option><option>2</option><option>3</option><option>4</option></select>
+<select name="processType"><option value="">All Types</option><option value="1">Loading</option><option value="0">Unloading</option></select>
+<button>Apply</button>
+<a href="/LiveTruckStatus">Reset</a>
+</form>
 
-    <select name="bay">
-      <option value="">All Bays</option>
-      <option value="1">Bay 1</option>
-      <option value="2">Bay 2</option>
-      <option value="3">Bay 3</option>
-      <option value="4">Bay 4</option>
-    </select>
+<div class="export-bar">
+  <div class="right-actions">
+    <button class="dark-toggle" onclick="toggleDarkMode()" id="darkBtn" title="Toggle Dark Mode">
+      🌙
+    </button>
 
-    <select name="type">
-      <option value="">All Types</option>
-      <option value="Loading">Loading</option>
-      <option value="UnLoading">UnLoading</option>
-    </select>
+    <a href="/LiveTruckStatus/excel?${new URLSearchParams(req.query)}" class="btn excel">
+      Excel
+    </a>
 
-    <button type="submit">Search</button>
-    <a class="btn-reset" href="/LiveTruckStatus">Refresh</a>
-  </form>
-
-  <div class="export-bar">
-    <a href="/LiveTruckStatus/excel" class="export-btn excel">Excel</a>
-    <a href="/LiveTruckStatus/pdf" class="export-btn pdf">PDF</a>
+    <a href="/LiveTruckStatus/pdf?${new URLSearchParams(req.query)}" class="btn pdf">
+      PDF
+    </a>
   </div>
 </div>
+
 
 <table>
 <thead>
 <tr>
-  <th>Sr</th>
-  <th>Truck Reg No</th>
-  <th>Card No</th>
-  <th>Status</th>
-  <th>Type</th>
-  <th>Bay</th>
-  <th>Batch</th>
-  <th>Entry Gate</th>
-  <th>Fan Timeout</th>
+<th>#</th><th>Truck</th><th>Card</th><th>Status</th>
+<th>Bay</th><th>Customer</th><th>Product</th>
+<th>Net Wt</th><th>Exit</th><th>Action</th>
 </tr>
 </thead>
 <tbody>
 `;
 
-    rows.forEach((r, i) => {
-      const statusClass = r['STATUS']
-        ? r['STATUS'].replace(/\s+/g, '-').toLowerCase()
-        : '';
-
-      html += `
+rs.recordset.forEach((r,i)=>{
+const st = statusMap(r.PROCESS_STATUS);
+html += `
 <tr>
-  <td>${offset + i + 1}</td>
-  <td>${escapeHtml(r['TRUCK REG NO'] || '')}</td>
-  <td>${escapeHtml(r['CARD NO'] || '')}</td>
-  <td class="status-col ${statusClass}">${escapeHtml(r['STATUS'] || '')}</td>
-  <td>${escapeHtml(r['TYPE'] || '')}</td>
-  <td>${r['BAY'] ?? ''}</td>
-  <td>${r['BATCH_STATUS'] ?? ''}</td>
-  <td>${r['ENTRY GATE TIME'] ?? ''}</td>
-  <td>${r['FAN TIMEOUT'] ?? ''}</td>
-</tr>`;
-    });
+<td>${offset+i+1}</td>
+<td>${r.TRUCK_REG_NO}</td>
+<td>${r.CARD_NO}</td>
+<td class="status ${st.c}">${st.t}</td>
+<td>${r.BAY_NO||''}</td>
+<td>${escapeHtml(r.CUSTOMER_NAME||'')}</td>
+<td>${escapeHtml(r.ITEM_DESCRIPTION||'')}</td>
+<td>${r.NET_WEIGHT||''}</td>
+<td>${r.EXIT_GATE_TIME||''}</td>
+<td>
+<button class="view-btn" onclick='openModal(${escapeHtml(JSON.stringify(r.FULL_ROW))})'>
+View
+</button>
+</td>
+</tr>
+`;
+});
 
-    html += `
+html += `
 </tbody>
 </table>
 
 <div class="pagination">
-Page ${page} of ${totalPages}<br/>
-`;
+${
+  pages > 1
+    ? `
+      ${page > 1 ? `<a class="page-btn" href="?page=${page - 1}">Prev</a>` : ''}
 
-    for (let p = 1; p <= totalPages; p++) {
-      html += `<a href="/LiveTruckStatus?page=${p}&limit=${limit}">${p}</a>`;
-    }
+      ${Array.from({ length: pages }, (_, i) => `
+        <a class="page-btn ${page === i + 1 ? 'active' : ''}"
+           href="?page=${i + 1}">
+          ${i + 1}
+        </a>
+      `).join('')}
 
-    html += `
+      ${page < pages ? `<a class="page-btn" href="?page=${page + 1}">Next</a>` : ''}
+    `
+    : ''
+}
 </div>
 
-<label class="auto-refresh">
-  <input type="checkbox" id="autoRefresh"> Auto Refresh (10s)
-</label>
+
+<!-- MODAL -->
+<div id="modal" class="modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h3>Truck Full Details</h3>
+      <span class="modal-close" onclick="closeModal()">✕</span>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
 
 <script>
-let interval;
-document.getElementById('autoRefresh').addEventListener('change', e => {
-  if (e.target.checked) interval = setInterval(() => location.reload(), 10000);
-  else clearInterval(interval);
-});
+function openModal(data){
+  const obj = JSON.parse(data);
+  let html = '<table class="detail-table">';
+  for (const k in obj) {
+    html += '<tr><th>'+k+'</th><td>'+obj[k]+'</td></tr>';
+  }
+  html += '</table>';
+  document.getElementById('modalBody').innerHTML = html;
+  document.getElementById('modal').style.display='block';
+}
+function closeModal(){
+  document.getElementById('modal').style.display='none';
+}
+</script>
+<script>
+function toggleDarkMode() {
+  const body = document.body;
+  const btn = document.getElementById('darkBtn');
+
+  body.classList.toggle('dark');
+
+  if (body.classList.contains('dark')) {
+    btn.textContent = '☀️';
+    localStorage.setItem('lts_dark', '1');
+  } else {
+    btn.textContent = '🌙';
+    localStorage.removeItem('lts_dark');
+  }
+}
+
+// restore state on load
+(function () {
+  if (localStorage.getItem('lts_dark')) {
+    document.body.classList.add('dark');
+    const btn = document.getElementById('darkBtn');
+    if (btn) btn.textContent = '☀️';
+  }
+})();
 </script>
 
-</body>
-</html>
+
+</body></html>
 `;
 
-    res.send(html);
+res.send(html);
+
+} catch(e) {
+  console.error(e);
+  res.status(500).send('Live Truck Status Error');
+}
+});
+
+router.get('/LiveTruckStatus/excel', async (req, res) => {
+  try {
+    const pool = await sql.connect(dbConfig);
+    const r = pool.request();
+
+    let where = 'WHERE 1=1';
+    let filterTag = [];
+
+    if (req.query.search) {
+      where += ' AND (TRUCK_REG_NO LIKE @s OR CARD_NO LIKE @s OR CUSTOMER_NAME LIKE @s)';
+      r.input('s', sql.VarChar, `%${req.query.search}%`);
+      filterTag.push(`Search-${req.query.search}`);
+    }
+
+    if (req.query.bay) {
+      where += ' AND BAY_NO=@b';
+      r.input('b', sql.Int, req.query.bay);
+      filterTag.push(`Bay-${req.query.bay}`);
+    }
+
+    if (req.query.processType) {
+      where += ' AND PROCESS_TYPE=@p';
+      r.input('p', sql.Int, req.query.processType);
+      filterTag.push(`Type-${req.query.processType}`);
+    }
+
+    const result = await r.query(`
+      SELECT *
+      FROM COMMON_VIEW
+      ${where}
+      ORDER BY FAN_TIME_OUT DESC
+    `);
+
+    if (!result.recordset.length) {
+      return res.status(404).send('No data available for export');
+    }
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Live Truck Status');
+
+    /* ===== Columns ===== */
+    ws.columns = Object.keys(result.recordset[0]).map(k => ({
+      header: k.replace(/_/g, ' '),
+      key: k,
+      width: 22
+    }));
+
+    /* ===== Data ===== */
+    result.recordset.forEach(row => ws.addRow(row));
+
+    /* ===== Header Styling ===== */
+    ws.getRow(1).eachCell(cell => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF2F5597' } // professional blue
+      };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+      cell.border = {
+        top: { style: 'thin' },
+        left: { style: 'thin' },
+        bottom: { style: 'thin' },
+        right: { style: 'thin' }
+      };
+    });
+
+    /* ===== Freeze + Filter ===== */
+    ws.views = [{ state: 'frozen', ySplit: 1 }];
+    const lastColumnNumber = ws.columnCount;
+    const lastColumnLetter = ws.getColumn(lastColumnNumber).letter;
+
+    ws.autoFilter = {
+      from: 'A1',
+      to: `${lastColumnLetter}1`
+    };
+
+
+    /* ===== Number formatting ===== */
+    ws.eachRow((row, rowNum) => {
+      if (rowNum > 1) {
+        row.eachCell(cell => {
+          if (typeof cell.value === 'number') {
+            cell.numFmt = '#,##0';
+          }
+        });
+      }
+    });
+
+    /* ===== Filename ===== */
+    const datePart = new Date()
+      .toLocaleDateString('en-GB')
+      .split('/')
+      .join('_');
+
+    const filterPart = filterTag.length ? `_${filterTag.join('_')}` : '';
+
+    const fileName = `LiveTruckStatus${filterPart}_${datePart}.xlsx`;
+
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${fileName}"`
+    );
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    );
+
+    await wb.xlsx.write(res);
+    res.end();
 
   } catch (err) {
-    console.error(err);
-    res.status(500).send('Live Truck Status error');
+    console.error('Excel error:', err);
+    res.status(500).send('Error generating Excel file');
   }
 });
 
-/* ===== EXCEL EXPORT ===== */
-router.get('/LiveTruckStatus/excel', async (req, res) => {
-  const pool = await sql.connect(dbConfig);
-  const result = await pool.request().query('SELECT * FROM COMMON_VIEW_3');
 
-  const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet('Live Truck Status');
-
-  ws.columns = Object.keys(result.recordset[0]).map(k => ({
-    header: k,
-    key: k
-  }));
-
-  result.recordset.forEach(r => ws.addRow(r));
-
-  res.setHeader('Content-Disposition', 'attachment; filename=LiveTruckStatus.xlsx');
-  await wb.xlsx.write(res);
-  res.end();
-});
-
-/* ===== PDF EXPORT ===== */
 router.get('/LiveTruckStatus/pdf', async (req, res) => {
-  const pool = await sql.connect(dbConfig);
-  const result = await pool.request().query('SELECT * FROM COMMON_VIEW_3');
+  try {
+    const pool = await sql.connect(dbConfig);
+    const r = pool.request();
 
-  const doc = new PDFDocument({ size: 'A4', margin: 30 });
-  res.setHeader('Content-Type', 'application/pdf');
-  res.setHeader('Content-Disposition', 'attachment; filename=LiveTruckStatus.pdf');
+    let where = 'WHERE 1=1';
+    let filterTag = [];
 
-  doc.pipe(res);
-  doc.fontSize(16).text('LIVE TRUCK STATUS REPORT', { align: 'center' });
-  doc.moveDown();
+    if (req.query.search) {
+      where += ' AND (TRUCK_REG_NO LIKE @s OR CARD_NO LIKE @s OR CUSTOMER_NAME LIKE @s)';
+      r.input('s', sql.VarChar, `%${req.query.search}%`);
+      filterTag.push(`Search-${req.query.search}`);
+    }
 
-  result.recordset.forEach((r, i) => {
-    doc.fontSize(9).text(
-      `${i + 1}. Truck:${r['TRUCK REG NO']} | Card:${r['CARD NO']} | Status:${r['STATUS']}`
+    if (req.query.bay) {
+      where += ' AND BAY_NO=@b';
+      r.input('b', sql.Int, req.query.bay);
+      filterTag.push(`Bay-${req.query.bay}`);
+    }
+
+    if (req.query.processType) {
+      where += ' AND PROCESS_TYPE=@p';
+      r.input('p', sql.Int, req.query.processType);
+      filterTag.push(`Type-${req.query.processType}`);
+    }
+
+    const result = await r.query(`
+      SELECT *
+      FROM COMMON_VIEW
+      ${where}
+      ORDER BY FAN_TIME_OUT DESC
+    `);
+
+    if (!result.recordset.length) {
+      return res.status(404).send('No data available');
+    }
+
+    /* ===== Create Excel ===== */
+    const ExcelJS = require('exceljs');
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Live Truck Status');
+
+    ws.columns = Object.keys(result.recordset[0]).map(k => ({
+      header: k.replace(/_/g, ' '),
+      key: k,
+      width: 22
+    }));
+
+    result.recordset.forEach(row => ws.addRow(row));
+
+    // Header styling
+    ws.getRow(1).eachCell(cell => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF1F4E78' }
+      };
+      cell.alignment = { vertical: 'middle', horizontal: 'center' };
+    });
+
+    ws.views = [{ state: 'frozen', ySplit: 1 }];
+
+    const lastCol = ws.getColumn(ws.columnCount).letter;
+    ws.autoFilter = `A1:${lastCol}1`;
+
+    /* ===== Save temp Excel ===== */
+    const tempXlsx = path.join(__dirname, 'temp.xlsx');
+    await wb.xlsx.writeFile(tempXlsx);
+
+    /* ===== Convert to PDF ===== */
+    const xlsxBuf = fs.readFileSync(tempXlsx);
+    const pdfBuf = await libre.convertAsync(xlsxBuf, '.pdf', undefined);
+
+    fs.unlinkSync(tempXlsx);
+
+    /* ===== Filename ===== */
+    const datePart = new Date()
+      .toLocaleDateString('en-GB')
+      .split('/')
+      .join('_');
+
+    const filterPart = filterTag.length ? `_${filterTag.join('_')}` : '';
+    const fileName = `LiveTruckStatus${filterPart}_${datePart}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${fileName}"`
     );
-  });
 
-  doc.end();
+    res.send(pdfBuf);
+
+  } catch (err) {
+    console.error('PDF error:', err);
+    res.status(500).send('Error generating PDF');
+  }
 });
+
+
 
 module.exports = router;
+
