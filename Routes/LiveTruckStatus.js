@@ -9,6 +9,7 @@ const dbConfig = require("../Config/dbConfig");
 const PdfPrinter = require("pdfmake");
 
 /* =============== HELPERS =============== */
+/* =============== HELPERS =============== */
 
 function buildWhere(req, r, tags = []) {
   let w = "WHERE 1=1";
@@ -31,8 +32,129 @@ function buildWhere(req, r, tags = []) {
     tags.push(`Type-${req.query.processType}`);
   }
 
+  /* DATE FILTERS (SAFE) */
+/* ===== SINGLE DATE RANGE FILTER ===== */
+if (req.query.dateFrom) {
+  const from = new Date(req.query.dateFrom);
+  from.setHours(0, 0, 0, 0);
+
+  const to = req.query.dateTo
+    ? new Date(req.query.dateTo)
+    : new Date(req.query.dateFrom);
+
+  to.setHours(23, 59, 59, 999);
+
+  w += `
+    AND (
+      (ENTRY_GATE_TIME BETWEEN @from AND @to)
+      OR
+      (EXIT_GATE_TIME BETWEEN @from AND @to)
+    )
+  `;
+
+  r.input("from", sql.DateTime, from);
+  r.input("to", sql.DateTime, to);
+
+  tags.push(
+    `Date-${req.query.dateFrom}${
+      req.query.dateTo ? "_to_" + req.query.dateTo : ""
+    }`
+  );
+}
+
+
   return w;
 }
+
+
+function formatDate(d) {
+  if (!d) return "";
+  const dt = new Date(d);
+  return dt.toLocaleDateString("en-GB");
+}
+
+function formatTime(d) {
+  if (!d) return "";
+  const dt = new Date(d);
+  return dt.toLocaleTimeString("en-GB", { hour12: false });
+}
+
+function formatDateTime(d) {
+  if (!d) return "";
+  const dt = new Date(d);
+  return (
+    dt.toLocaleDateString("en-GB") +
+    " " +
+    dt.toLocaleTimeString("en-GB", { hour12: false })
+  );
+}
+
+/* ===== COLUMN TYPE MAPS (AS PER COMMON_VIEW) ===== */
+
+const DATE_ONLY_COLS = new Set([
+  "SAFETY_CERTIFICATION_NO",
+  "CALIBRATION_CERTIFICATION_NO",
+]);
+
+const DATETIME_COLS = new Set([
+  "ENTRY_GATE_TIME",
+  "BAY_REPORTING_TIME",
+  "FILLING_START_TIME",
+  "FILLING_COMPLETE_TIME",
+  "EXIT_GATE_TIME",
+  "FAN_EXPIRY",
+  "Date_Time",
+  "ENTRY_WEIGHT_TIME",
+  "EXIT_WEIGHT_TIME",
+]);
+
+function renderValue(col, val) {
+  if (val === null || val === undefined) return "";
+
+  if (DATE_ONLY_COLS.has(col)) {
+    return formatDate(val);
+  }
+
+  if (DATETIME_COLS.has(col)) {
+    return formatDateTime(val);
+  }
+
+  return escapeHtml(String(val));
+}
+
+
+
+
+function formatTime(d) {
+  if (!d) return "";
+  const dt = new Date(d);
+  return dt.toLocaleTimeString("en-GB", { hour12: false });
+}
+
+function formatDateTime(d) {
+  if (!d) return "";
+  const dt = new Date(d);
+  return (
+    dt.toLocaleDateString("en-GB") +
+    " " +
+    dt.toLocaleTimeString("en-GB", { hour12: false })
+  );
+}
+
+function renderValue(col, val) {
+  if (!val) return "";
+
+  if (col.includes("DATE") && !col.includes("TIME")) {
+    return formatDate(val);
+  }
+
+  if (col.includes("TIME")) {
+    return formatDateTime(val);
+  }
+
+  return escapeHtml(String(val));
+}
+
 
 /* =============== MAIN PAGE =============== */
 
@@ -72,6 +194,9 @@ router.get("/LiveTruckStatus", async (req, res) => {
 <link rel="stylesheet" href="/Css/Page.css">
 <link rel="stylesheet" href="/Css/LiveTruckStatus.css">
 <link href="https://fonts.googleapis.com/css?family=DM Sans" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css?family=DM Sans" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+
 </head>
 <body>
 
@@ -89,6 +214,17 @@ ${fs.readFileSync(path.join(__dirname, "../public/Css/navbar.html"), "utf8")}
     <option value="1">Loading</option>
     <option value="0">Unloading</option>
   </select>
+<input
+  id="dateRange"
+  type="text"
+  placeholder="Select date or range"
+  readonly
+>
+<input type="hidden" name="dateFrom" id="dateFrom">
+<input type="hidden" name="dateTo" id="dateTo">
+
+
+
   <button>Apply</button>
   <a href="/LiveTruckStatus">Reset</a>
 </form>
@@ -131,7 +267,7 @@ ${columns.map(c => `<th>${escapeHtml(c.replace(/_/g, " "))}</th>`).join("")}
 
     rs.recordset.forEach(row => {
       html += `<tr>${
-        columns.map(c => `<td>${escapeHtml(String(row[c] ?? ""))}</td>`).join("")
+        columns.map(c => `<td>${renderValue(c, row[c])}</td>`).join("")
       }</tr>`;
     });
 
@@ -200,6 +336,41 @@ function toggleDarkMode(){
   }
 })();
 </script>
+<script>
+/* ===== FLATPICKR DATE RANGE ===== */
+document.addEventListener("DOMContentLoaded", function () {
+  const rangeInput = document.getElementById("dateRange");
+  const fromInput = document.getElementById("dateFrom");
+  const toInput = document.getElementById("dateTo");
+
+  if (!rangeInput) return;
+
+  const existingFrom = "${req.query.dateFrom || ""}";
+  const existingTo = "${req.query.dateTo || ""}";
+
+  flatpickr(rangeInput, {
+    mode: "range",
+    dateFormat: "Y-m-d",
+    defaultDate:
+      existingFrom
+        ? existingTo
+          ? [existingFrom, existingTo]
+          : [existingFrom]
+        : null,
+    onClose: function (selectedDates) {
+      if (selectedDates.length >= 1) {
+        fromInput.value = selectedDates[0].toISOString().slice(0, 10);
+      }
+      if (selectedDates.length === 2) {
+        toInput.value = selectedDates[1].toISOString().slice(0, 10);
+      } else {
+        toInput.value = "";
+      }
+    }
+  });
+});
+</script>
+
 
 <script>
 /* ===== AUTO REFRESH ===== */
@@ -231,16 +402,21 @@ if(chk){
   });
 }
 </script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 
 </body>
 </html>
 `;
 
     res.send(html);
-  } catch (e) {
-    console.error(e);
-    res.status(500).send("Live Truck Status Error");
-  }
+  } 
+  catch (e) {
+  console.error("LIVE TRUCK STATUS ERROR →", e);
+  res.status(500).send(
+    "<pre>" + escapeHtml(e.message + "\n\n" + e.stack) + "</pre>"
+  );
+}
+
 });
 
 /* ===== EXPORT MODAL HTML ===== */

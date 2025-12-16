@@ -488,3 +488,132 @@ table {
 html, body {
   overflow-x: hidden;
 }
+
+
+/* ===================== FLATPICKR DARK MODE – FULL PATCH ===================== */
+
+/* Calendar shell */
+body.dark .flatpickr-calendar {
+  background: #020617;
+  border: 1px solid #1e293b;
+  box-shadow: 0 25px 50px rgba(0,0,0,0.65);
+}
+
+/* Month / year header */
+body.dark .flatpickr-months,
+body.dark .flatpickr-current-month {
+  background: #020617;
+  color: #e5e7eb;
+}
+
+/* Month & year dropdowns */
+body.dark .flatpickr-current-month select,
+body.dark .flatpickr-monthDropdown-months {
+  background: #020617;
+  color: #e5e7eb;
+  border: 1px solid #1e293b;
+}
+
+/* Weekday header */
+body.dark .flatpickr-weekdays {
+  background: #020617;
+}
+
+body.dark .flatpickr-weekday {
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+/* ALL day cells – force dark base */
+body.dark .flatpickr-day {
+  background: transparent;
+  color: #e5e7eb;
+  border-radius: 10px;
+  border: none;
+}
+
+/* Hover */
+body.dark .flatpickr-day:hover {
+  background: rgba(59,130,246,0.25);
+  color: #ffffff;
+}
+
+/* Today (not selected) */
+body.dark .flatpickr-day.today:not(.selected):not(.inRange) {
+  border: 1px solid #2563eb;
+  background: transparent;
+}
+
+/* Selected start / end */
+body.dark .flatpickr-day.selected,
+body.dark .flatpickr-day.startRange,
+body.dark .flatpickr-day.endRange {
+  background: #2563eb;
+  color: #ffffff;
+  box-shadow: none;
+}
+
+/* In-between range days (THIS FIXES THE WHITE BLOCKS) */
+body.dark .flatpickr-day.inRange {
+  background: rgba(37,99,235,0.35);
+  color: #ffffff;
+  box-shadow: none;
+}
+
+/* Prevent Flatpickr default white overlays */
+body.dark .flatpickr-day.inRange:hover,
+body.dark .flatpickr-day.selected:hover {
+  background: #2563eb;
+}
+
+/* Disabled / other month days */
+body.dark .flatpickr-day.disabled,
+body.dark .flatpickr-day.prevMonthDay,
+body.dark .flatpickr-day.nextMonthDay {
+  background: transparent;
+  color: #475569;
+}
+
+/* Navigation arrows */
+body.dark .flatpickr-prev-month svg,
+body.dark .flatpickr-next-month svg {
+  fill: #e5e7eb;
+}
+
+body.dark .flatpickr-prev-month:hover svg,
+body.dark .flatpickr-next-month:hover svg {
+  fill: #2563eb;
+}
+
+/* Remove any focus outlines causing white rings */
+body.dark .flatpickr-day:focus {
+  outline: none;
+}
+
+/* ===================== DARK MODE INPUT PLACEHOLDER FIX ===================== */
+
+/* Date range input text */
+body.dark #dateRange {
+  color: #e5e7eb;
+}
+
+/* Placeholder color (all browsers) */
+body.dark #dateRange::placeholder {
+  color: #94a3b8;
+  opacity: 1; /* Firefox */
+}
+
+/* WebKit (Chrome, Edge, Brave) */
+body.dark #dateRange::-webkit-input-placeholder {
+  color: #94a3b8;
+}
+
+/* Firefox */
+body.dark #dateRange::-moz-placeholder {
+  color: #94a3b8;
+}
+
+/* Internet Explorer / Legacy Edge */
+body.dark #dateRange:-ms-input-placeholder {
+  color: #94a3b8;
+}
